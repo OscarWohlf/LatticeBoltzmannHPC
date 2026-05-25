@@ -1,9 +1,10 @@
-#ifndef LBM_HH
-#define LBM_HH
+#ifndef LBM_MPI_HH
+#define LBM_MPI_HH
 
 #include <cstddef>
 #include <cstdint>
 #include <vector>
+#include "mpi.h"
 
 /**
  * @brief 2D Lattice Boltzmann solver, D2Q9 lattice with BGK collision.
@@ -18,7 +19,7 @@
  *
  * Lattice units are used throughout (dx = dt = 1, c = 1, c_s^2 = 1/3).
  */
-class LBM
+class LBM_MPI
 {
 public:
   static constexpr int Q = 9;
@@ -37,9 +38,9 @@ public:
    * @param cyl_y    Center of the (first) cylinder along y, in cell units.
    * @param cyl_r    Radius of the (first) cylinder, in cell units.
    */
-  LBM(std::size_t nx, std::size_t ny,
+  LBM_MPI(std::size_t nx, std::size_t ny,
       double u_in, double Re,
-      double cyl_x, double cyl_y, double cyl_r);
+      double cyl_x, double cyl_y, double cyl_r, MPI_Comm comm);
 
   /// Add a second circular obstacle. No-op if r2 <= 0.
   void add_second_cylinder(double cyl2_x, double cyl2_y, double cyl2_r);
@@ -78,9 +79,13 @@ private:
   double u_in_;
   double tau_;
 
+  MPI_Comm comm_;
+  int rank_;
+  int size_;
+
   std::vector<double>  f_;      ///< Current distributions, size 9*nx*ny.
   std::vector<double>  ftmp_;   ///< Scratch buffer for streaming.
   std::vector<uint8_t> solid_;  ///< 0 = fluid, 1 = solid.  Size nx*ny.
 };
 
-#endif  // LBM_HH
+#endif  // LBM_MPI_HH

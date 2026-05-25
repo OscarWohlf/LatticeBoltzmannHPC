@@ -1,5 +1,5 @@
-#include "lbm.hh"
-
+#include "lbm_mpi.hh"
+#include "mpi.h"
 #include <algorithm>
 
 // D2Q9 lattice constants. Indexing convention used throughout:
@@ -8,21 +8,21 @@
 //   2: N            7: SW
 //   3: W            8: SE
 //   4: S
-const int LBM::cx[9] = { 0,  1,  0, -1,  0,  1, -1, -1,  1};
-const int LBM::cy[9] = { 0,  0,  1,  0, -1,  1,  1, -1, -1};
+const int LBM_MPI::cx[9] = { 0,  1,  0, -1,  0,  1, -1, -1,  1};
+const int LBM_MPI::cy[9] = { 0,  0,  1,  0, -1,  1,  1, -1, -1};
 
-const double LBM::w[9] = {
+const double LBM_MPI::w[9] = {
   4.0 / 9.0,
   1.0 / 9.0,  1.0 / 9.0,  1.0 / 9.0,  1.0 / 9.0,
   1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0, 1.0 / 36.0
 };
 
-const int LBM::opp[9] = {0, 3, 4, 1, 2, 7, 8, 5, 6};
+const int LBM_MPI::opp[9] = {0, 3, 4, 1, 2, 7, 8, 5, 6};
 
-LBM::LBM(std::size_t nx, std::size_t ny,
+LBM_MPI::LBM_MPI(std::size_t nx, std::size_t ny,
          double u_in, double Re,
-         double cyl_x, double cyl_y, double cyl_r)
-  : nx_(nx), ny_(ny), u_in_(u_in), tau_(0.0),
+         double cyl_x, double cyl_y, double cyl_r, MPI_Comm comm)
+  : nx_(nx), ny_(ny), u_in_(u_in), tau_(0.0), comm_(comm),
     f_   (9 * nx * ny, 0.0),
     ftmp_(9 * nx * ny, 0.0),
     solid_(nx * ny, 0)
@@ -37,16 +37,19 @@ LBM::LBM(std::size_t nx, std::size_t ny,
     solid_[idx(x, ny_ - 1)]  = 1;
   }
   mark_obstacle(cyl_x, cyl_y, cyl_r);
+
+  MPI_Comm_rank(comm, &rank_);
+  MPI_Comm_size(comm, &size_);
 }
 
 void
-LBM::add_second_cylinder(double cyl2_x, double cyl2_y, double cyl2_r)
+LBM_MPI::add_second_cylinder(double cyl2_x, double cyl2_y, double cyl2_r)
 {
   if (cyl2_r > 0.0) mark_obstacle(cyl2_x, cyl2_y, cyl2_r);
 }
 
 void
-LBM::mark_obstacle(double c_x, double c_y, double r)
+LBM_MPI::mark_obstacle(double c_x, double c_y, double r)
 {
   const double r2 = r * r;
   for (std::size_t y = 0; y < ny_; ++y) {
@@ -59,7 +62,7 @@ LBM::mark_obstacle(double c_x, double c_y, double r)
 }
 
 void
-LBM::initialize()
+LBM_MPI::initialize()
 {
   for (std::size_t y = 0; y < ny_; ++y) {
     for (std::size_t x = 0; x < nx_; ++x) {
@@ -77,7 +80,7 @@ LBM::initialize()
 }
 
 void
-LBM::step()
+LBM_MPI::step()
 {
   collide();
   bounce_back();
@@ -87,7 +90,7 @@ LBM::step()
 }
 
 void
-LBM::collide()
+LBM_MPI::collide()
 {
   const std::size_t N = nx_ * ny_;
   const double inv_tau = 1.0 / tau_;
@@ -113,7 +116,7 @@ LBM::collide()
 }
 
 void
-LBM::bounce_back()
+LBM_MPI::bounce_back()
 {
   // Fullway bounce-back: in solid cells, swap each pair of opposite directions.
   // Combined with subsequent streaming this reflects populations across the
@@ -129,7 +132,7 @@ LBM::bounce_back()
 }
 
 void
-LBM::stream()
+LBM_MPI::stream()
 {
   // Pull-style streaming: ftmp[i, x, y] = f[i, x - cx[i], y - cy[i]].
   // Boundary cells whose source would be outside the domain keep their
@@ -152,7 +155,7 @@ LBM::stream()
 }
 
 void
-LBM::apply_inlet()
+LBM_MPI::apply_inlet()
 {
   // Reset the inlet column to the equilibrium distribution corresponding
   // to a prescribed uniform velocity (u_in, 0) and unit density. Simple,
@@ -173,7 +176,7 @@ LBM::apply_inlet()
 }
 
 void
-LBM::apply_outlet()
+LBM_MPI::apply_outlet()
 {
   // Zero-gradient outlet: copy the second-to-last column into the last.
   if (nx_ < 2) return;
@@ -188,7 +191,7 @@ LBM::apply_outlet()
 }
 
 double
-LBM::rho(std::size_t x, std::size_t y) const
+LBM_MPI::rho(std::size_t x, std::size_t y) const
 {
   const std::size_t N = nx_ * ny_;
   double r = 0.0;
@@ -197,7 +200,7 @@ LBM::rho(std::size_t x, std::size_t y) const
 }
 
 double
-LBM::ux(std::size_t x, std::size_t y) const
+LBM_MPI::ux(std::size_t x, std::size_t y) const
 {
   const std::size_t N = nx_ * ny_;
   double r = 0.0, m = 0.0;
@@ -210,7 +213,7 @@ LBM::ux(std::size_t x, std::size_t y) const
 }
 
 double
-LBM::uy(std::size_t x, std::size_t y) const
+LBM_MPI::uy(std::size_t x, std::size_t y) const
 {
   const std::size_t N = nx_ * ny_;
   double r = 0.0, m = 0.0;
@@ -223,14 +226,14 @@ LBM::uy(std::size_t x, std::size_t y) const
 }
 
 double
-LBM::vorticity(std::size_t x, std::size_t y) const
+LBM_MPI::vorticity(std::size_t x, std::size_t y) const
 {
   if (x == 0 || x == nx_ - 1 || y == 0 || y == ny_ - 1) return 0.0;
   return 0.5 * ((uy(x + 1, y) - uy(x - 1, y)) - (ux(x, y + 1) - ux(x, y - 1)));
 }
 
 bool
-LBM::is_solid(std::size_t x, std::size_t y) const
+LBM_MPI::is_solid(std::size_t x, std::size_t y) const
 {
   return solid_[idx(x, y)] != 0;
 }
