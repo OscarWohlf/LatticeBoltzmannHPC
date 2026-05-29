@@ -53,12 +53,8 @@ get_string(const Args & kv, const std::string & key, const std::string & def)
 int
 main(int argc, char ** argv)
 {
-  int rank, size;
   const Args kv = parse_args(argc, argv);
   MPI_Init(&argc, &argv);
-
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &size);
 
   // Grid + physics.
   const std::size_t nx    = get<std::size_t>(kv, "nx",    800);
@@ -88,6 +84,7 @@ main(int argc, char ** argv)
   const std::size_t px = get<std::size_t>(kv, "probe_x",
                                           std::size_t(cx0 + 8.0 * cr0));
   const std::size_t py = get<std::size_t>(kv, "probe_y", std::size_t(cy0));
+
 
   LBM_MPI solver(nx, ny, u_in, Re, cx0, cy0, cr0, MPI_COMM_WORLD);
   if (cr1 > 0.0) solver.add_second_cylinder(cx1, cy1, cr1);
@@ -132,5 +129,6 @@ main(int argc, char ** argv)
   const double mlups = double(nx) * double(ny) * double(steps) / dt / 1.0e6;
   std::cout << "Wall time : " << dt    << " s\n"
             << "MLUPS     : " << mlups << "\n";
+  MPI_Finalize();
   return 0;
 }

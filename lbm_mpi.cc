@@ -22,24 +22,31 @@ const int LBM_MPI::opp[9] = {0, 3, 4, 1, 2, 7, 8, 5, 6};
 LBM_MPI::LBM_MPI(std::size_t nx, std::size_t ny,
          double u_in, double Re,
          double cyl_x, double cyl_y, double cyl_r, MPI_Comm comm)
-  : nx_(nx), ny_(ny), u_in_(u_in), tau_(0.0), comm_(comm),
-    f_   (9 * nx * ny, 0.0),
-    ftmp_(9 * nx * ny, 0.0),
-    solid_(nx * ny, 0)
+  : nx_global_(nx), ny_(ny), u_in_(u_in), tau_(0.0), comm_(comm)
 {
+  MPI_Comm_rank(comm_, &rank_);
+  MPI_Comm_size(comm_, &size_);
+
+  const std::size_t base  = nx_global_ / size_;
+  const std::size_t rem = nx_global_ % size_;
+  nx_local_ = base;
+  if (rank_ < rem) {nx_local_ ++};
+  x_start_ = rank_ * base + std::min(rem, rank_);
+
   // ν = c_s^2 (τ - 1/2) with c_s^2 = 1/3, and Re = u_in * D / ν.
   const double nu = u_in_ * (2.0 * cyl_r) / Re;
   tau_ = 3.0 * nu + 0.5;
 
+  f_.resize(9 * nx_local_ * ny, 0.0);
+  ftmp_.resize(9 * nx_local_ * ny, 0.0);
+  solid_.resize(nx_local_ * ny, 0);
+
   // No-slip top and bottom walls.
-  for (std::size_t x = 0; x < nx_; ++x) {
+  for (std::size_t x = 0; x < nx_local_; ++x) {
     solid_[idx(x, 0)]        = 1;
     solid_[idx(x, ny_ - 1)]  = 1;
   }
   mark_obstacle(cyl_x, cyl_y, cyl_r);
-
-  MPI_Comm_rank(comm, &rank_);
-  MPI_Comm_size(comm, &size_);
 }
 
 void
@@ -53,8 +60,9 @@ LBM_MPI::mark_obstacle(double c_x, double c_y, double r)
 {
   const double r2 = r * r;
   for (std::size_t y = 0; y < ny_; ++y) {
-    for (std::size_t x = 0; x < nx_; ++x) {
-      const double dx = double(x) - c_x;
+    for (std::size_t x = 0; x < nx_local_; ++x) {
+      const std::size_t x_global = x_start_ + x;
+      const double dx = double(x_global) - c_x;
       const double dy = double(y) - c_y;
       if (dx * dx + dy * dy <= r2) solid_[idx(x, y)] = 1;
     }
@@ -65,7 +73,7 @@ void
 LBM_MPI::initialize()
 {
   for (std::size_t y = 0; y < ny_; ++y) {
-    for (std::size_t x = 0; x < nx_; ++x) {
+    for (std::size_t x = 0; x < nx_local_; ++x) {
       const double rho = 1.0;
       const double ux  = solid_[idx(x, y)] ? 0.0 : u_in_;
       const double uy  = 0.0;
@@ -92,7 +100,7 @@ LBM_MPI::step()
 void
 LBM_MPI::collide()
 {
-  const std::size_t N = nx_ * ny_;
+  const std::size_t N = nx_local_ * ny_;
   const double inv_tau = 1.0 / tau_;
 
   for (std::size_t k = 0; k < N; ++k) {
@@ -121,7 +129,7 @@ LBM_MPI::bounce_back()
   // Fullway bounce-back: in solid cells, swap each pair of opposite directions.
   // Combined with subsequent streaming this reflects populations across the
   // solid-fluid interface.
-  const std::size_t N = nx_ * ny_;
+  const std::size_t N = nx_local_ * ny_;
   for (std::size_t k = 0; k < N; ++k) {
     if (!solid_[k]) continue;
     std::swap(f_[1 * N + k], f_[3 * N + k]);
@@ -137,13 +145,13 @@ LBM_MPI::stream()
   // Pull-style streaming: ftmp[i, x, y] = f[i, x - cx[i], y - cy[i]].
   // Boundary cells whose source would be outside the domain keep their
   // current value; the inlet/outlet routines overwrite the relevant ones.
-  const std::size_t N = nx_ * ny_;
+  const std::size_t N = nx_local_ * ny_;
   for (int i = 0; i < Q; ++i) {
     for (std::size_t y = 0; y < ny_; ++y) {
-      for (std::size_t x = 0; x < nx_; ++x) {
+      for (std::size_t x = 0; x < nx_local_; ++x) {
         const long sx = long(x) - cx[i];
         const long sy = long(y) - cy[i];
-        if (sx >= 0 && sx < long(nx_) && sy >= 0 && sy < long(ny_)) {
+        if (sx >= 0 && sx < long(nx_local_) && sy >= 0 && sy < long(ny_)) {
           ftmp_[i * N + idx(x, y)] = f_[i * N + idx(std::size_t(sx), std::size_t(sy))];
         } else {
           ftmp_[i * N + idx(x, y)] = f_[i * N + idx(x, y)];
@@ -160,7 +168,8 @@ LBM_MPI::apply_inlet()
   // Reset the inlet column to the equilibrium distribution corresponding
   // to a prescribed uniform velocity (u_in, 0) and unit density. Simple,
   // stable, and accurate enough for moderate Reynolds numbers.
-  const std::size_t N = nx_ * ny_;
+  if (rank_ != 0) return;
+  const std::size_t N = nx_local_ * ny_;
   const std::size_t x = 0;
   for (std::size_t y = 0; y < ny_; ++y) {
     if (solid_[idx(x, y)]) continue;
@@ -179,10 +188,11 @@ void
 LBM_MPI::apply_outlet()
 {
   // Zero-gradient outlet: copy the second-to-last column into the last.
-  if (nx_ < 2) return;
-  const std::size_t N  = nx_ * ny_;
-  const std::size_t x  = nx_ - 1;
-  const std::size_t xs = nx_ - 2;
+  if (rank_ != size-1) return;
+  if (nx_local_ < 2) return;
+  const std::size_t N  = nx_local_ * ny_;
+  const std::size_t x  = nx_local_ - 1;
+  const std::size_t xs = nx_local_ - 2;
   for (std::size_t y = 0; y < ny_; ++y) {
     for (int i = 0; i < Q; ++i) {
       f_[i * N + idx(x, y)] = f_[i * N + idx(xs, y)];

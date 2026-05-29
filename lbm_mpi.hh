@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <vector>
-#include "mpi.h"
+#include <mpi.h>
 
 /**
  * @brief 2D Lattice Boltzmann solver, D2Q9 lattice with BGK collision.
@@ -59,14 +59,14 @@ public:
   double vorticity(std::size_t x, std::size_t y) const;
   bool   is_solid (std::size_t x, std::size_t y) const;
 
-  std::size_t nx()   const { return nx_; }
+  std::size_t nx()   const { return nx_global_; }
   std::size_t ny()   const { return ny_; }
   double      tau()  const { return tau_; }
   double      u_in() const { return u_in_; }
 
 private:
-  std::size_t idx (std::size_t x, std::size_t y)         const { return y * nx_ + x; }
-  std::size_t fidx(int i, std::size_t x, std::size_t y)  const { return i * nx_ * ny_ + idx(x, y); }
+  std::size_t idx (std::size_t x, std::size_t y)         const { return y * nx_local_ + x; }
+  std::size_t fidx(int i, std::size_t x, std::size_t y)  const { return i * nx_local_ * ny_ + idx(x, y); }
 
   void mark_obstacle (double c_x, double c_y, double r);
   void collide       ();
@@ -75,7 +75,9 @@ private:
   void apply_inlet   ();
   void apply_outlet  ();
 
-  std::size_t nx_, ny_;
+  std::size_t nx_global_, ny_;
+  std::size_t nx_local_;
+  std::size_t x_start_;
   double u_in_;
   double tau_;
 
