@@ -65,8 +65,8 @@ public:
   double      u_in() const { return u_in_; }
 
 private:
-  std::size_t idx (std::size_t x, std::size_t y)         const { return y * nx_local_ + x; }
-  std::size_t fidx(int i, std::size_t x, std::size_t y)  const { return i * nx_local_ * ny_ + idx(x, y); }
+  std::size_t idx (std::size_t x, std::size_t y)         const { return y * nx_nbrs_ + x; }
+  std::size_t fidx(int i, std::size_t x, std::size_t y)  const { return i * nx_nbrs_ * ny_ + idx(x, y); }
 
   void mark_obstacle (double c_x, double c_y, double r);
   void collide       ();
@@ -74,9 +74,10 @@ private:
   void stream        ();
   void apply_inlet   ();
   void apply_outlet  ();
-
+  void exchange_nbrs();
   std::size_t nx_global_, ny_;
   std::size_t nx_local_;
+  std::size_t nx_nbrs_;
   std::size_t x_start_;
   double u_in_;
   double tau_;
