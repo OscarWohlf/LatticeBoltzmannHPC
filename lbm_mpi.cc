@@ -32,7 +32,7 @@ LBM_MPI::LBM_MPI(std::size_t nx, std::size_t ny,
   nx_local_ = base;
   if (rank_ < rem) {nx_local_ ++};
   x_start_ = rank_ * base + std::min(rem, rank_);
-  nx_nbrs_ = nx_local +2;
+  nx_nbrs_ = nx_local_ +2;
   // ν = c_s^2 (τ - 1/2) with c_s^2 = 1/3, and Re = u_in * D / ν.
   const double nu = u_in_ * (2.0 * cyl_r) / Re;
   tau_ = 3.0 * nu + 0.5;
@@ -136,6 +136,7 @@ LBM_MPI::bounce_back()
   const std::size_t N = nx_nbrs_ * ny_;
   for (std::size_t y = 0; y< ny_; ++y) {
     for (std::size_t x = 1; y< nx_local_; ++x) {
+      const std::size_t k = idx(x,y);
       if (!solid_[k]) continue;
       std::swap(f_[1 * N + k], f_[3 * N + k]);
       std::swap(f_[2 * N + k], f_[4 * N + k]);
@@ -147,7 +148,48 @@ LBM_MPI::bounce_back()
 
 void LBM_MPI::exchange_nbrs()
 {
+  const int left = (rank_ == 0) ? MPI_PROC_NULL : rank_ - 1;
+  const int right = (rank_ == size_ - 1) ? MPI_PROC_NULL : rank_ + 1;
+  const int count = Q * int(ny_);
+  std::vector<double> send_left(count);
+  std::vector<double> send_right(count);
+  std::vector<double> recv_left(count);
+  std::vector<double> recv_right(count);
 
+  for (int i = 0; i < Q; ++i) {
+    for (std::size_t y = 0; y < ny_; ++y) {
+      const std::size_t b = std::size_t(i)*ny_ + y;
+      send_left[b] = f_[fidx(i,1,y)];
+      send_right[b] = f_[fidx(i,nx_local_,y)];
+    }
+  }
+
+  MPI_Sendrecv(send_left.data(), count, MPI_DOUBLE, left, 0, recv_right.data(), cuont, MPI_DOUBLE, right, 0, comm_, MPI_STATUS_IGNORE);
+  MPI_Sendrecv(send_right.data(), count, MPI_DOUBLE, right, 1, recv_left.data(), cuont, MPI_DOUBLE, left, 1, comm_, MPI_STATUS_IGNORE);
+
+  for (int i = 0; i < Q; ++i) {
+    for (std::size_t y = 0; y < ny_; ++y) {
+      const std::size_t b = std::size_t(i)*ny_ + y;
+
+      if (left != MPI_PROC_NULL) {
+        f_[fidx(i,0,y)] = recv_left[b];
+      } else {
+        f_[fidx(i,0,y)] = f_[fidx(i,1,y)] ;
+      }
+    }
+  }
+
+  for (int i = 0; i < Q; ++i) {
+    for (std::size_t y = 0; y < ny_; ++y) {
+      const std::size_t b = std::size_t(i)*ny_ + y;
+
+      if (left != MPI_PROC_NULL) {
+        f_[fidx(i,nx_local_+1,y)] = recv_right[b];
+      } else {
+        f_[fidx(i,nx_local_+1,y)] = f_[fidx(i,nx_local_,y)] ;
+      }
+    }
+  }
 }
 
 
@@ -215,7 +257,7 @@ LBM_MPI::apply_outlet()
 double
 LBM_MPI::rho(std::size_t x, std::size_t y) const
 {
-  const std::size_t N = nx_ * ny_;
+  const std::size_t N = nx_nbrs_ * ny_;
   double r = 0.0;
   for (int i = 0; i < Q; ++i) r += f_[i * N + idx(x, y)];
   return r;
@@ -224,7 +266,7 @@ LBM_MPI::rho(std::size_t x, std::size_t y) const
 double
 LBM_MPI::ux(std::size_t x, std::size_t y) const
 {
-  const std::size_t N = nx_ * ny_;
+  const std::size_t N = nx_nbrs_ * ny_;
   double r = 0.0, m = 0.0;
   for (int i = 0; i < Q; ++i) {
     const double fi = f_[i * N + idx(x, y)];
@@ -237,7 +279,7 @@ LBM_MPI::ux(std::size_t x, std::size_t y) const
 double
 LBM_MPI::uy(std::size_t x, std::size_t y) const
 {
-  const std::size_t N = nx_ * ny_;
+  const std::size_t N = nx_nbrs_ * ny_;
   double r = 0.0, m = 0.0;
   for (int i = 0; i < Q; ++i) {
     const double fi = f_[i * N + idx(x, y)];
@@ -250,7 +292,9 @@ LBM_MPI::uy(std::size_t x, std::size_t y) const
 double
 LBM_MPI::vorticity(std::size_t x, std::size_t y) const
 {
-  if (x == 0 || x == nx_ - 1 || y == 0 || y == ny_ - 1) return 0.0;
+  if (y == 0 || y == ny_ - 1) return 0.0;
+  if (rank_ == 0 && x == 1) return 0.0;
+  if (rank_ == size_ - 1 &&  x == nx_local_) return 0.0;
   return 0.5 * ((uy(x + 1, y) - uy(x - 1, y)) - (ux(x, y + 1) - ux(x, y - 1)));
 }
 
