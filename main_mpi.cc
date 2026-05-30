@@ -55,6 +55,9 @@ main(int argc, char ** argv)
 {
   const Args kv = parse_args(argc, argv);
   MPI_Init(&argc, &argv);
+  int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
 
   // Grid + physics.
   const std::size_t nx    = get<std::size_t>(kv, "nx",    800);
@@ -89,46 +92,58 @@ main(int argc, char ** argv)
   LBM_MPI solver(nx, ny, u_in, Re, cx0, cy0, cr0, MPI_COMM_WORLD);
   if (cr1 > 0.0) solver.add_second_cylinder(cx1, cy1, cr1);
   solver.initialize();
+  if (rank == 0) {
+    std::cout << "LBM 2D D2Q9 BGK\n"
+              << "  grid          : " << nx << " x " << ny << "\n"
+              << "  Re            : " << Re << "\n"
+              << "  u_in          : " << u_in << "\n"
+              << "  tau           : " << solver.tau() << "\n"
+              << "  cylinder      : (" << cx0 << ", " << cy0
+              << "), r = " << cr0 << "\n";
 
-  std::cout << "LBM 2D D2Q9 BGK\n"
-            << "  grid          : " << nx << " x " << ny << "\n"
-            << "  Re            : " << Re << "\n"
-            << "  u_in          : " << u_in << "\n"
-            << "  tau           : " << solver.tau() << "\n"
-            << "  cylinder      : (" << cx0 << ", " << cy0
-            << "), r = " << cr0 << "\n";
-  if (cr1 > 0.0)
-    std::cout << "  cylinder #2   : (" << cx1 << ", " << cy1
+    if (cr1 > 0.0) {
+        std::cout << "  cylinder #2   : (" << cx1 << ", " << cy1
               << "), r = " << cr1 << "\n";
+      }
   std::cout << "  steps         : " << steps << "\n"
             << "  output every  : " << every << " (0 = off)\n"
             << "  output prefix : " << out_pref << "\n"
             << "  probe at      : (" << px << ", " << py << ")\n"
             << "  probe csv     : " << probe_csv << "\n";
+  }
+  std::ofstream probe;
 
-  std::ofstream probe(probe_csv);
-  probe << "step,ux,uy\n";
+  bool owns_probe = solver.owns_global_x(px);
+  std::size_t probe_local_x = owns_probe ? solver.get_local_x(px) : 0;
 
+  if (owns_probe) {
+    probe.open(probe_csv);
+    probe << "step,ux,uy\n";
+   }
   XDMFWriter writer(out_pref, nx, ny);
   if (every > 0) writer.write_mask(solver);
-
+  MPI_Barrier(MPI_COMM_WORLD);
   using clk = std::chrono::high_resolution_clock;
   const auto t0 = clk::now();
 
   for (std::size_t step = 1; step <= steps; ++step) {
     solver.step();
-    probe << step << ',' << solver.ux(px, py) << ',' << solver.uy(px, py) << '\n';
-    if (every > 0 && step % every == 0) {
+    if (owns_probe) {
+      probe << step << ',' << solver.ux(probe_local_x, py) << ',' << solver.uy(probe_local_x, py) << '\n';
+    }
+    if (rank == 0 && every > 0 && step % every == 0) {
       writer.write_snapshot(solver, double(step));
       std::cout << "\r  step " << step << " / " << steps << std::flush;
     }
   }
-  if (every > 0) std::cout << "\n";
-
+  if (rank == 0 && every > 0) std::cout << "\n";
+  MPI_Barrier(MPI_COMM_WORLD); 
   const double dt    = std::chrono::duration<double>(clk::now() - t0).count();
-  const double mlups = double(nx) * double(ny) * double(steps) / dt / 1.0e6;
-  std::cout << "Wall time : " << dt    << " s\n"
-            << "MLUPS     : " << mlups << "\n";
+  if (rank == 0) {
+    const double mlups = double(nx) * double(ny) * double(steps) / dt / 1.0e6;
+    std::cout << "Wall time : " << dt    << " s\n"
+              << "MLUPS     : " << mlups << "\n";
+  }
   MPI_Finalize();
   return 0;
 }

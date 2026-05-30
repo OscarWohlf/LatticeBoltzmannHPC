@@ -135,7 +135,7 @@ LBM_MPI::bounce_back()
   // solid-fluid interface.
   const std::size_t N = nx_nbrs_ * ny_;
   for (std::size_t y = 0; y< ny_; ++y) {
-    for (std::size_t x = 1; y< nx_local_; ++x) {
+    for (std::size_t x = 1; x <= nx_local_; ++x) {
       const std::size_t k = idx(x,y);
       if (!solid_[k]) continue;
       std::swap(f_[1 * N + k], f_[3 * N + k]);
@@ -164,8 +164,8 @@ void LBM_MPI::exchange_nbrs()
     }
   }
 
-  MPI_Sendrecv(send_left.data(), count, MPI_DOUBLE, left, 0, recv_right.data(), cuont, MPI_DOUBLE, right, 0, comm_, MPI_STATUS_IGNORE);
-  MPI_Sendrecv(send_right.data(), count, MPI_DOUBLE, right, 1, recv_left.data(), cuont, MPI_DOUBLE, left, 1, comm_, MPI_STATUS_IGNORE);
+  MPI_Sendrecv(send_left.data(), count, MPI_DOUBLE, left, 0, recv_right.data(), count, MPI_DOUBLE, right, 0, comm_, MPI_STATUS_IGNORE);
+  MPI_Sendrecv(send_right.data(), count, MPI_DOUBLE, right, 1, recv_left.data(), count, MPI_DOUBLE, left, 1, comm_, MPI_STATUS_IGNORE);
 
   for (int i = 0; i < Q; ++i) {
     for (std::size_t y = 0; y < ny_; ++y) {
@@ -183,7 +183,7 @@ void LBM_MPI::exchange_nbrs()
     for (std::size_t y = 0; y < ny_; ++y) {
       const std::size_t b = std::size_t(i)*ny_ + y;
 
-      if (left != MPI_PROC_NULL) {
+      if (right != MPI_PROC_NULL) {
         f_[fidx(i,nx_local_+1,y)] = recv_right[b];
       } else {
         f_[fidx(i,nx_local_+1,y)] = f_[fidx(i,nx_local_,y)] ;

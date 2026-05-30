@@ -64,6 +64,12 @@ public:
   double      tau()  const { return tau_; }
   double      u_in() const { return u_in_; }
 
+  bool owns_global_x(std::size_t x) {
+      return x >= x_start_ && x < x_start_ + nx_local_;
+    }
+  std::size_t get_local_x(std::size_t x) {
+      return x - x_start_ +1;
+    }
 private:
   std::size_t idx (std::size_t x, std::size_t y)         const { return y * nx_nbrs_ + x; }
   std::size_t fidx(int i, std::size_t x, std::size_t y)  const { return i * nx_nbrs_ * ny_ + idx(x, y); }
