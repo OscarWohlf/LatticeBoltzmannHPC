@@ -1,5 +1,5 @@
 #include "lbm_mpi.hh"
-#include "output.hh"
+#include "output_mpi.hh"
 
 #include <chrono>
 #include <cstdlib>
@@ -120,8 +120,8 @@ main(int argc, char ** argv)
     probe.open(probe_csv);
     probe << "step,ux,uy\n";
    }
-  XDMFWriter writer(out_pref, nx, ny);
-  if (every > 0) writer.write_mask(solver);
+  XDMFWriter_MPI writer(out_pref, nx, ny, MPI_COMM_WORLD);
+  if (every > 0) write_mask(writer,solver);
   MPI_Barrier(MPI_COMM_WORLD);
   using clk = std::chrono::high_resolution_clock;
   const auto t0 = clk::now();
@@ -131,9 +131,11 @@ main(int argc, char ** argv)
     if (owns_probe) {
       probe << step << ',' << solver.ux(probe_local_x, py) << ',' << solver.uy(probe_local_x, py) << '\n';
     }
-    if (rank == 0 && every > 0 && step % every == 0) {
-      writer.write_snapshot(solver, double(step));
-      std::cout << "\r  step " << step << " / " << steps << std::flush;
+    if (every > 0 && step % every == 0) {
+      write_snapshot(solver, writer, double(step),);
+      if (rank == 0) {
+        std::cout << "\r  step " << step << " / " << steps << std::flush;
+      }
     }
   }
   if (rank == 0 && every > 0) std::cout << "\n";

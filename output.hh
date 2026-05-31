@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <string>
 #include <vector>
-
+#include <cstdint>
 class LBM;
 
 /**
@@ -30,6 +30,9 @@ public:
   /// Append a snapshot at simulation time t.
   void write_snapshot(const LBM & solver, double t);
 
+  // Used for writing in CUDA and MPI
+  void write_mask_array(const std::vector<std::uint8_t>& mask);
+  void write_snapshot_arrays(const std::vector<double>& rho, const std::vector<double>& ux, const std::vector<double>& uy, const std::vector<double>& vorticity, double t);
 private:
   void write_root_xdmf() const;
 

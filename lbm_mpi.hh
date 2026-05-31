@@ -63,7 +63,8 @@ public:
   std::size_t ny()   const { return ny_; }
   double      tau()  const { return tau_; }
   double      u_in() const { return u_in_; }
-
+  std::size_t nx_local() const { return nx_local_;}
+  std::size_t x_start() const { return x_start_;}
   bool owns_global_x(std::size_t x) {
       return x >= x_start_ && x < x_start_ + nx_local_;
     }
