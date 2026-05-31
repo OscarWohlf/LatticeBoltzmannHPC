@@ -31,7 +31,7 @@ LBM_MPI::LBM_MPI(std::size_t nx, std::size_t ny,
   const std::size_t rem = nx_global_ % size_;
   nx_local_ = base;
   if (std::size_t(rank_) < rem) {nx_local_ ++};
-  x_start_ = rank_ * base + std::min(rem, rank_);
+  x_start_ = rank_ * base + std::min(rem, std::size_t(rank_));
   nx_nbrs_ = nx_local_ +2;
   // ν = c_s^2 (τ - 1/2) with c_s^2 = 1/3, and Re = u_in * D / ν.
   const double nu = u_in_ * (2.0 * cyl_r) / Re;

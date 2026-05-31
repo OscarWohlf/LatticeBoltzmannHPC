@@ -12,8 +12,166 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include <algorithm>
 
 namespace {
+std::size_t
+local_nx_for_rank(std::size_t nx, int size, int rank)
+{
+  const std::size_t base = nx / std::size_t(size);
+  const std::size_t rem  = nx % std::size_t(size);
+  return base + (std::size_t(rank) < rem ? 1 : 0);
+}
+
+std::size_t
+x_start_for_rank(std::size_t nx, int size, int rank)
+{
+  const std::size_t base = nx / std::size_t(size);
+  const std::size_t rem  = nx % std::size_t(size);
+  return std::size_t(rank) * base + std::min<std::size_t>(rem, std::size_t(rank));
+}
+
+std::vector<int>
+make_counts(std::size_t nx, std::size_t ny, int size)
+{
+  std::vector<int> counts(size);
+  for (int r = 0; r < size; ++r) {
+    const std::size_t n = local_nx_for_rank(nx, size, r) * ny;
+    counts[r] = int(n);  // fine unless your output array is enormous
+  }
+  return counts;
+}
+
+std::vector<int>
+make_displs(const std::vector<int>& counts)
+{
+  std::vector<int> displs(counts.size(), 0);
+  for (std::size_t r = 1; r < counts.size(); ++r) {
+    displs[r] = displs[r - 1] + counts[r - 1];
+  }
+  return displs;
+}
+
+std::vector<double>
+gather_double_field(const std::vector<double>& local,
+                    std::size_t nx, std::size_t ny,
+                    MPI_Comm comm, int rank, int size)
+{
+  const auto counts = make_counts(nx, ny, size);
+  const auto displs = make_displs(counts);
+
+  std::vector<double> gathered;
+  if (rank == 0) {
+    gathered.resize(nx * ny);
+  }
+
+  MPI_Gatherv(local.data(),
+              int(local.size()),
+              MPI_DOUBLE,
+              rank == 0 ? gathered.data() : nullptr,
+              counts.data(),
+              displs.data(),
+              MPI_DOUBLE,
+              0,
+              comm);
+
+  return gathered;
+}
+
+std::vector<std::uint8_t>
+gather_uint8_field(const std::vector<std::uint8_t>& local,
+                   std::size_t nx, std::size_t ny,
+                   MPI_Comm comm, int rank, int size)
+{
+  const auto counts = make_counts(nx, ny, size);
+  const auto displs = make_displs(counts);
+
+  std::vector<std::uint8_t> gathered;
+  if (rank == 0) {
+    gathered.resize(nx * ny);
+  }
+
+  MPI_Gatherv(local.data(),
+              int(local.size()),
+              MPI_UNSIGNED_CHAR,
+              rank == 0 ? gathered.data() : nullptr,
+              counts.data(),
+              displs.data(),
+              MPI_UNSIGNED_CHAR,
+              0,
+              comm);
+
+  return gathered;
+}
+
+std::vector<double>
+unpack_double_field(const std::vector<double>& gathered,
+                    std::size_t nx, std::size_t ny,
+                    int size)
+{
+  std::vector<double> global(nx * ny, 0.0);
+
+  std::size_t offset = 0;
+  for (int r = 0; r < size; ++r) {
+    const std::size_t local_nx = local_nx_for_rank(nx, size, r);
+    const std::size_t x_start  = x_start_for_rank(nx, size, r);
+
+    for (std::size_t y = 0; y < ny; ++y) {
+      for (std::size_t lx = 0; lx < local_nx; ++lx) {
+        global[y * nx + (x_start + lx)] =
+          gathered[offset + y * local_nx + lx];
+      }
+    }
+
+    offset += local_nx * ny;
+  }
+
+  return global;
+}
+
+std::vector<std::uint8_t>
+unpack_uint8_field(const std::vector<std::uint8_t>& gathered,
+                   std::size_t nx, std::size_t ny,
+                   int size)
+{
+  std::vector<std::uint8_t> global(nx * ny, 0);
+
+  std::size_t offset = 0;
+  for (int r = 0; r < size; ++r) {
+    const std::size_t local_nx = local_nx_for_rank(nx, size, r);
+    const std::size_t x_start  = x_start_for_rank(nx, size, r);
+
+    for (std::size_t y = 0; y < ny; ++y) {
+      for (std::size_t lx = 0; lx < local_nx; ++lx) {
+        global[y * nx + (x_start + lx)] =
+          gathered[offset + y * local_nx + lx];
+      }
+    }
+
+    offset += local_nx * ny;
+  }
+
+  return global;
+}
+
+std::vector<double>
+compute_vorticity_global(const std::vector<double>& ux,
+                         const std::vector<double>& uy,
+                         std::size_t nx, std::size_t ny)
+{
+  std::vector<double> vor(nx * ny, 0.0);
+
+  for (std::size_t y = 1; y + 1 < ny; ++y) {
+    for (std::size_t x = 1; x + 1 < nx; ++x) {
+      vor[y * nx + x] =
+        0.5 * ((uy[y * nx + (x + 1)] - uy[y * nx + (x - 1)])
+             - (ux[(y + 1) * nx + x] - ux[(y - 1) * nx + x]));
+    }
+  }
+
+  return vor;
+}
+
 
 void
 write_h5_double(const std::string & fname,
@@ -115,12 +273,27 @@ XDMFWriter_MPI::XDMFWriter_MPI(const std::string & prefix, std::size_t nx, std::
 void
 XDMFWriter_MPI::write_mask(const LBM_MPI & solver)
 {
-  std::vector<std::uint8_t> mask(nx_ * ny_);
-  for (std::size_t y = 0; y < ny_; ++y)
-    for (std::size_t x = 0; x < nx_; ++x)
-      mask[y * nx_ + x] = solver.is_solid(x, y) ? 1 : 0;
+  const std::size_t local_nx = solver.nx_local();
 
-  write_mask_array(mask);
+  std::vector<std::uint8_t> mask_local(local_nx * ny_);
+
+  for (std::size_t y = 0; y < ny_; ++y) {
+    for (std::size_t lx = 0; lx < local_nx; ++lx) {
+      const std::size_t local_x = lx + 1;  // skip left ghost column
+      mask_local[y * local_nx + lx] =
+        solver.is_solid(local_x, y) ? 1 : 0;
+    }
+  }
+
+  std::vector<std::uint8_t> gathered =
+    gather_uint8_field(mask_local, nx_, ny_, comm_, rank_, size_);
+
+  if (rank_ == 0) {
+    std::vector<std::uint8_t> mask =
+      unpack_uint8_field(gathered, nx_, ny_, size_);
+
+    write_mask_array(mask);
+  }
 }
 
 void
@@ -141,23 +314,48 @@ XDMFWriter_MPI::write_mask_array(const std::vector<std::uint8_t>& mask)
 void
 XDMFWriter_MPI::write_snapshot(const LBM_MPI & solver, double t)
 {
-  std::vector<double> rho_v (nx_ * ny_);
-  std::vector<double> ux_v  (nx_ * ny_);
-  std::vector<double> uy_v  (nx_ * ny_);
-  std::vector<double> vor_v (nx_ * ny_);
+  const std::size_t local_nx = solver.nx_local();
+
+  std::vector<double> rho_local(local_nx * ny_);
+  std::vector<double> ux_local (local_nx * ny_);
+  std::vector<double> uy_local (local_nx * ny_);
+
   for (std::size_t y = 0; y < ny_; ++y) {
-    for (std::size_t x = 0; x < nx_; ++x) {
-      const std::size_t k = y * nx_ + x;
-      rho_v[k] = solver.rho(x, y);
-      ux_v [k] = solver.ux (x, y);
-      uy_v [k] = solver.uy (x, y);
-      vor_v[k] = solver.vorticity(x, y);
+    for (std::size_t lx = 0; lx < local_nx; ++lx) {
+      const std::size_t local_x = lx + 1;  // real cell, not ghost
+      const std::size_t k = y * local_nx + lx;
+
+      rho_local[k] = solver.rho(local_x, y);
+      ux_local [k] = solver.ux (local_x, y);
+      uy_local [k] = solver.uy (local_x, y);
     }
   }
 
-  write_snapshot_arrays(rho_v, ux_v, uy_v, vor_v, t);
-}
+  std::vector<double> rho_gathered =
+    gather_double_field(rho_local, nx_, ny_, comm_, rank_, size_);
 
+  std::vector<double> ux_gathered =
+    gather_double_field(ux_local, nx_, ny_, comm_, rank_, size_);
+
+  std::vector<double> uy_gathered =
+    gather_double_field(uy_local, nx_, ny_, comm_, rank_, size_);
+
+  if (rank_ == 0) {
+    std::vector<double> rho =
+      unpack_double_field(rho_gathered, nx_, ny_, size_);
+
+    std::vector<double> ux =
+      unpack_double_field(ux_gathered, nx_, ny_, size_);
+
+    std::vector<double> uy =
+      unpack_double_field(uy_gathered, nx_, ny_, size_);
+
+    std::vector<double> vor =
+      compute_vorticity_global(ux, uy, nx_, ny_);
+
+    write_snapshot_arrays(rho, ux, uy, vor, t);
+  }
+}
 void
 XDMFWriter_MPI::write_snapshot_arrays(const std::vector<double> & rho,
                                   const std::vector<double> & ux,
