@@ -135,7 +135,7 @@ XDMFWriter_CUDA::write_snapshot(const LBM_CUDA & solver, double t)
   std::vector<double> uy (nx_ * ny_);
   std::vector<double> vor(nx_ * ny_);
 
-  solver.copy_fields_to_host(rho, ux, uy, vor);
+  solver.copy_vars_to_host(rho, ux, uy, vor);
 
   write_snapshot_arrays(rho, ux, uy, vor, t);
 }

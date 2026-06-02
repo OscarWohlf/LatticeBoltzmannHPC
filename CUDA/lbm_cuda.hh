@@ -53,10 +53,13 @@ public:
 
   void copy_vars_to_host(std::vector<double>& rho, std::vector<double>& ux, std::vector<double>& uy, std::vector<double>& vorticity) const;
 
-private:
-  std::size_t idx (std::size_t x, std::size_t y)         const { return y * nx_ + x; }
-  std::size_t fidx(int i, std::size_t x, std::size_t y)  const { return i * nx_ * ny_ + idx(x, y); }
+  std::size_t nx() const { return nx_; }
+  std::size_t ny() const { return ny_; }
+  double tau() const { return tau_; }
+  double u_in() const { return u_in_; }
 
+
+private:
   void mark_obstacle (double c_x, double c_y, double r);
   std::size_t nx_, ny_;
   double u_in_;
