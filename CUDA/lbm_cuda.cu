@@ -353,3 +353,35 @@ LBM_CUDA::copy_vars_to_host(std::vector<double>& rho, std::vector<double>& ux, s
   cudaMemcpy(uy.data(), uy_d_, nx_ * ny_ * sizeof(double), cudaMemcpyDeviceToHost);
   cudaMemcpy(vorticity.data(), vort_d_, nx_ * ny_ * sizeof(double), cudaMemcpyDeviceToHost);
 }
+
+void
+LBM_CUDA::copy_probe_to_host(std::size_t x,std::size_t y, double& ux, double& uy) const
+{
+  if (x >= nx_ || y >= ny_) {
+    ux = 0.0;
+    uy = 0.0;
+    return;
+  }
+  const std::size_t N = nx_ * ny_;
+  const std::size_t k = y * nx_ + x;
+
+  double f_host[9];
+  for (int i = 0; i < 9; ++i) {
+    cudaMemcpy(&f_host[i], f_d_ + i * N + k, sizeof(double),cudaMemcpyDeviceToHost);
+  }
+
+  const int cx[9] = { 0,  1,  0, -1,  0,  1, -1, -1,  1};
+  const int cy[9] = { 0,  0,  1,  0, -1,  1,  1, -1, -1};
+
+  double mx  = 0.0;
+  double my  = 0.0;
+  double rho = 0.0;
+
+  for (int i = 0; i < 9; ++i) {
+    rho += f_host[i];
+    mx  += cx[i] * f_host[i];
+    my  += cy[i] * f_host[i];
+  }
+  ux = (rho > 0.0) ? mx / rho : 0.0;
+  uy = (rho > 0.0) ? my / rho : 0.0;
+}

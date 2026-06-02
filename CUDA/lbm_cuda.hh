@@ -58,6 +58,7 @@ public:
   double tau() const { return tau_; }
   double u_in() const { return u_in_; }
 
+  void copy_probe_to_host(std::size_t x,  std::size_t y, double& ux, double& uy) const;
 
 private:
   void mark_obstacle (double c_x, double c_y, double r);
