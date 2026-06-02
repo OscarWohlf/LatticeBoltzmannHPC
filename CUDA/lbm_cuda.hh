@@ -35,7 +35,8 @@ public:
    */
   LBM_CUDA(std::size_t nx, std::size_t ny,
       double u_in, double Re,
-      double cyl_x, double cyl_y, double cyl_r);
+      double cyl_x, double cyl_y, double cyl_r,
+      int block_x = 16, int block_y = 16);
 
   ~LBM_CUDA();
 

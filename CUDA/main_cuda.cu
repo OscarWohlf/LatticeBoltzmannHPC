@@ -84,13 +84,16 @@ main(int argc, char ** argv)
   const std::string out_pref  = get_string(kv, "out", "out/lbm");
   const std::string probe_csv = get_string(kv, "probe", "probe.csv");
 
+  const int block_x = get<int>(kv, "block_x", 16);
+  const int block_y = get<int>(kv, "block_y", 16);
+
   // Probe location: about 4 diameters downstream, on the cylinder centerline.
   const std::size_t px = get<std::size_t>(kv, "probe_x",
                                           std::size_t(cx0 + 8.0 * cr0));
   const std::size_t py = get<std::size_t>(kv, "probe_y", std::size_t(cy0));
 
 
-  LBM_CUDA solver(nx, ny, u_in, Re, cx0, cy0, cr0);
+  LBM_CUDA solver(nx, ny, u_in, Re, cx0, cy0, cr0, block_x, block_y);
 
   if (cr1 > 0.0) solver.add_second_cylinder(cx1, cy1, cr1);
 

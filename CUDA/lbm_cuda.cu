@@ -246,8 +246,8 @@ void vort_kernel(const double* ux,  const double* uy,  double* vort,  std::size_
 
 LBM_CUDA::LBM_CUDA(std::size_t nx, std::size_t ny,
          double u_in, double Re,
-         double cyl_x, double cyl_y, double cyl_r)
-: nx_(nx), ny_(ny), u_in_(u_in), tau_(0.0), block_x_(16), block_y_(16)
+         double cyl_x, double cyl_y, double cyl_r, int block_x, int block_y)
+: nx_(nx), ny_(ny), u_in_(u_in), tau_(0.0), block_x_(block_x), block_y_(block_y)
 {
   // ν = c_s^2 (τ - 1/2) with c_s^2 = 1/3, and Re = u_in * D / ν.
   const double nu = u_in_ * (2.0 * cyl_r) / Re;
