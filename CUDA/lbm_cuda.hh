@@ -63,7 +63,7 @@ public:
 
   void copy_mask_to_host(std::vector<std::uint8_t>& mask) const;
 
-  void copy_fields_to_host(std::vector<double>& rho, std::vector<double>& ux, std::vector<double>& uy, std::vector<double>& vorticity) const;
+  void copy_vars_to_host(std::vector<double>& rho, std::vector<double>& ux, std::vector<double>& uy, std::vector<double>& vorticity) const;
 
 private:
   std::size_t idx (std::size_t x, std::size_t y)         const { return y * nx_ + x; }
@@ -77,14 +77,14 @@ private:
   int block_x_;
   int block_y_;
 
-  double* rho_d_;
-  double* ux_d_;
-  double* uy_d_;
-  double* vort_d_;
+  double* rho_d_ = nullptr;
+  double* ux_d_ = nullptr;
+  double* uy_d_ = nullptr;
+  double* vort_d_ = nullptr;
 
-  std::vector<double>  f_d_;      ///< Current distributions, size 9*nx*ny.
-  std::vector<double>  ftmp_d_;   ///< Scratch buffer for streaming.
-  std::vector<uint8_t> solid_d_;  ///< 0 = fluid, 1 = solid.  Size nx*ny.
+  std::vector<double>  f_d_ = nullptr;      ///< Current distributions, size 9*nx*ny.
+  std::vector<double>  ftmp_d_ = nullptr;   ///< Scratch buffer for streaming.
+  std::vector<uint8_t> solid_d_ = nullptr;  ///< 0 = fluid, 1 = solid.  Size nx*ny.
 };
 
 #endif  // LBM_CUDA_HH
