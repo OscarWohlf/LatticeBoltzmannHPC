@@ -29,6 +29,7 @@ public:
     void write_mask(const LBM_CUDA & solver);
 
     /// Append a snapshot at simulation time t.
+
     void write_snapshot(const LBM_CUDA & solver, double t);
 
     // Used for writing in CUDA and MPI

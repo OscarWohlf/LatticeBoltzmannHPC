@@ -56,6 +56,7 @@ public:
   std::size_t nx() const { return nx_; }
   std::size_t ny() const { return ny_; }
   double tau() const { return tau_; }
+
   double u_in() const { return u_in_; }
 
   void copy_probe_to_host(std::size_t x,  std::size_t y, double& ux, double& uy) const;
