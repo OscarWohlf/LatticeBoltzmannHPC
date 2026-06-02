@@ -24,11 +24,6 @@ class LBM_CUDA
 public:
   static constexpr int Q = 9;
 
-  static const int    cx[Q];   ///< Discrete velocity x-components.
-  static const int    cy[Q];   ///< Discrete velocity y-components.
-  static const double w[Q];    ///< Equilibrium weights.
-  static const int    opp[Q];  ///< Index of the opposite direction.
-
   /**
    * @param nx       Number of cells along x.
    * @param ny       Number of cells along y.
@@ -54,13 +49,6 @@ public:
   /// Advance the simulation by one time step.
   void step();
 
-  // Macroscopic accessors.
-  double rho      (std::size_t x, std::size_t y) const;
-  double ux       (std::size_t x, std::size_t y) const;
-  double uy       (std::size_t x, std::size_t y) const;
-  double vorticity(std::size_t x, std::size_t y) const;
-  bool   is_solid (std::size_t x, std::size_t y) const;
-
   void copy_mask_to_host(std::vector<std::uint8_t>& mask) const;
 
   void copy_vars_to_host(std::vector<double>& rho, std::vector<double>& ux, std::vector<double>& uy, std::vector<double>& vorticity) const;
@@ -70,7 +58,7 @@ private:
   std::size_t fidx(int i, std::size_t x, std::size_t y)  const { return i * nx_ * ny_ + idx(x, y); }
 
   void mark_obstacle (double c_x, double c_y, double r);
-
+  std::size_t nx_, ny_;
   double u_in_;
   double tau_;
 
@@ -82,9 +70,9 @@ private:
   double* uy_d_ = nullptr;
   double* vort_d_ = nullptr;
 
-  std::vector<double>  f_d_ = nullptr;      ///< Current distributions, size 9*nx*ny.
-  std::vector<double>  ftmp_d_ = nullptr;   ///< Scratch buffer for streaming.
-  std::vector<uint8_t> solid_d_ = nullptr;  ///< 0 = fluid, 1 = solid.  Size nx*ny.
+  double* f_d_ = nullptr;     ///< Current distributions, size 9*nx*ny.
+  double* ftmp_d_ = nullptr;   ///< Scratch buffer for streaming.
+  std::uint8_t* solid_d_ = nullptr;  ///< 0 = fluid, 1 = solid.  Size nx*ny.
 };
 
 #endif  // LBM_CUDA_HH
