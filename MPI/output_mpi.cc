@@ -37,7 +37,7 @@ make_counts(std::size_t nx, std::size_t ny, int size)
   std::vector<int> counts(size);
   for (int r = 0; r < size; ++r) {
     const std::size_t n = local_nx_for_rank(nx, size, r) * ny;
-    counts[r] = int(n);  // fine unless your output array is enormous
+    counts[r] = int(n);
   }
   return counts;
 }
