@@ -7,6 +7,7 @@
 #include <mpi.h>
 
 /**
+*
  * @brief 2D Lattice Boltzmann solver, D2Q9 lattice with BGK collision.
  *
  * The solver simulates incompressible flow past one (or two) circular
