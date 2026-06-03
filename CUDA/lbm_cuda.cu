@@ -271,7 +271,7 @@ LBM_CUDA::LBM_CUDA(std::size_t nx, std::size_t ny,
 
   dim3 block_wall_x(256);
   dim3 grid_wall_x((nx_ + block_x.x - 1) / block_x.x);
-  mark_walls_kernel<<<grid_x, block_x>>>(solid_d_, nx_, ny_);
+  mark_walls_kernel<<<grid_wall_x, block_wall_x>>>(solid_d_, nx_, ny_);
 
   mark_obstacle(cyl_x, cyl_y, cyl_r);
 }
