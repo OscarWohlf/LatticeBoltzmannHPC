@@ -269,8 +269,8 @@ LBM_CUDA::LBM_CUDA(std::size_t nx, std::size_t ny,
   // No-slip top and bottom walls.
   clear_solid_kernel<<<grid, block>>>(solid_d_, nx_, ny_);
 
-  dim3 block_x(256);
-  dim3 grid_x((nx_ + block_x.x - 1) / block_x.x);
+  dim3 block_wall_x(256);
+  dim3 grid_wall_x((nx_ + block_x.x - 1) / block_x.x);
   mark_walls_kernel<<<grid_x, block_x>>>(solid_d_, nx_, ny_);
 
   mark_obstacle(cyl_x, cyl_y, cyl_r);
