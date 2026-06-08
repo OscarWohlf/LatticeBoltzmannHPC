@@ -112,14 +112,15 @@ main(int argc, char ** argv)
             << "  probe csv     : " << probe_csv << "\n";
   }
   std::ofstream probe;
+  const bool do_probe = (probe_csv != "off");
 
-  bool owns_probe = solver.owns_global_x(px);
-  std::size_t probe_local_x = owns_probe ? solver.get_local_x(px) : 0;
+  const bool owns_probe = solver.owns_global_x(px);
+  const std::size_t probe_local_x = owns_probe ? solver.get_local_x(px) : 0;
 
-  if (owns_probe) {
+  if (do_probe && owns_probe) {
     probe.open(probe_csv);
     probe << "step,ux,uy\n";
-   }
+  }
   XDMFWriter_MPI writer(out_pref, nx, ny, MPI_COMM_WORLD);
   if (every > 0) writer.write_mask(solver);
   MPI_Barrier(MPI_COMM_WORLD);
