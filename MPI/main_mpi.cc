@@ -129,7 +129,7 @@ main(int argc, char ** argv)
 
   for (std::size_t step = 1; step <= steps; ++step) {
     solver.step();
-    if (owns_probe) {
+    if (owns_probe && do_prove) {
       probe << step << ',' << solver.ux(probe_local_x, py) << ',' << solver.uy(probe_local_x, py) << '\n';
     }
     if (every > 0 && step % every == 0) {
