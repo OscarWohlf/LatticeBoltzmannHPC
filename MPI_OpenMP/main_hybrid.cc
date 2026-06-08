@@ -79,7 +79,7 @@ main(int argc, char ** argv)
   const double cy1 = get<double>(kv, "cyl2_y", -1.0);
   const double cr1 = get<double>(kv, "cyl2_r", -1.0);
 
-  // Output.
+  // Output
   const std::size_t every     = get<std::size_t>(kv, "every", 500);
   const std::string out_pref  = get_string(kv, "out", "out/lbm");
   const std::string probe_csv = get_string(kv, "probe", "probe.csv");
@@ -113,14 +113,15 @@ main(int argc, char ** argv)
             << "  probe csv     : " << probe_csv << "\n";
   }
   std::ofstream probe;
-
+  const bool do_probe = (probe_csv != "off");
   bool owns_probe = solver.owns_global_x(px);
-  std::size_t probe_local_x = owns_probe ? solver.get_local_x(px) : 0;
+  const std::size_t probe_local_x = owns_probe ? solver.get_local_x(px) : 0;
 
-  if (owns_probe) {
+  if (do_probe && owns_probe) {
     probe.open(probe_csv);
     probe << "step,ux,uy\n";
-   }
+
+}
   XDMFWriter_MPI writer(out_pref, nx, ny, MPI_COMM_WORLD);
   if (every > 0) writer.write_mask(solver);
   MPI_Barrier(MPI_COMM_WORLD);
@@ -129,7 +130,7 @@ main(int argc, char ** argv)
 
   for (std::size_t step = 1; step <= steps; ++step) {
     solver.step();
-    if (owns_probe) {
+    if (do_probe && owns_probe) {
       probe << step << ',' << solver.ux(probe_local_x, py) << ',' << solver.uy(probe_local_x, py) << '\n';
     }
     if (every > 0 && step % every == 0) {

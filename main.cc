@@ -103,8 +103,13 @@ main(int argc, char ** argv)
             << "  probe at      : (" << px << ", " << py << ")\n"
             << "  probe csv     : " << probe_csv << "\n";
 
-  std::ofstream probe(probe_csv);
-  probe << "step,ux,uy\n";
+  std::ofstream probe;
+  const bool do_probe = (probe_csv != "off");
+
+  if (do_probe) {
+    probe.open(probe_csv);
+    probe << "step,ux,uy\n";
+  }
 
   XDMFWriter writer(out_pref, nx, ny);
   if (every > 0) writer.write_mask(solver);
@@ -114,7 +119,11 @@ main(int argc, char ** argv)
 
   for (std::size_t step = 1; step <= steps; ++step) {
     solver.step();
-    probe << step << ',' << solver.ux(px, py) << ',' << solver.uy(px, py) << '\n';
+    if (do_probe) {
+      probe << step << ','
+          << solver.ux(px, py) << ','
+          << solver.uy(px, py) << '\n';
+      }
     if (every > 0 && step % every == 0) {
       writer.write_snapshot(solver, double(step));
       std::cout << "\r  step " << step << " / " << steps << std::flush;
