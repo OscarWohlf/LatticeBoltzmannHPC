@@ -91,6 +91,7 @@ private:
   double tau_;
 
   MPI_Comm comm_;
+
   int rank_;
   int size_;
 

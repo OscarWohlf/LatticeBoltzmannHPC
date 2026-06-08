@@ -26,12 +26,18 @@ idx(std::size_t x, std::size_t y, std::size_t nx)
   return y * nx + x;
 }
 
-__device__ inline std::size_t
-fidx(int i, std::size_t x, std::size_t y, std::size_t nx, std::size_t ny)
+__host__ __device__ inline std::size_t
+fidx(int i, std::size_t x, std::size_t y,
+     std::size_t nx, std::size_t ny)
 {
-  return std::size_t(i) * nx * ny + idx(x, y, nx);
-}
+  const std::size_t k = y * nx + x;
 
+#ifdef USE_AOS
+  return k * 9 + std::size_t(i);
+#else
+  return std::size_t(i) * nx * ny + k;
+#endif
+}
 
 __global__
 void clear_solid_kernel(std::uint8_t* solid, std::size_t nx, std::size_t ny)
@@ -72,7 +78,6 @@ void init_kernel(double* f,  const std::uint8_t* solid, std::size_t nx,std::size
   const std::size_t y = blockIdx.y * blockDim.y + threadIdx.y;
   if (x >= nx || y >= ny) return;
   const std::size_t k = idx(x, y, nx);
-  const std::size_t N = nx * ny;
 
   const double ux  = solid[k] ? 0.0 : u_in;
   const double uy  = 0.0;
@@ -84,7 +89,7 @@ void init_kernel(double* f,  const std::uint8_t* solid, std::size_t nx,std::size
   for (int i = 0; i < 9; ++i) {
     const double cu = cx_d[i] * ux + cy_d[i] * uy;
     const double feq =w_d[i] * rho * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u2);
-    f[i * N + k] = feq;
+    f[fidx(i, x, y, nx, ny)] = feq;
   }
 }
 
@@ -94,16 +99,12 @@ void collide_kernel(double* f,const std::uint8_t* solid, std::size_t nx,  std::s
   const std::size_t x = blockIdx.x * blockDim.x + threadIdx.x;
   const std::size_t y = blockIdx.y * blockDim.y + threadIdx.y;
   if (x >= nx || y >= ny) return;
-
-  const std::size_t N = nx * ny;
-  const std::size_t k = idx(x, y, nx);
-
   double rho = 0.0;
   double mx  = 0.0;
   double my  = 0.0;
 
   for (int i = 0; i < 9; ++i) {
-    const double fi = f[i * N + k];
+    const double fi = f[fidx(i, x, y, nx, ny)];
     rho += fi;
     mx  += cx_d[i] * fi;
     my  += cy_d[i] * fi;
@@ -116,7 +117,7 @@ void collide_kernel(double* f,const std::uint8_t* solid, std::size_t nx,  std::s
   for (int i = 0; i < 9; ++i) {
     const double cu = cx_d[i] * ux + cy_d[i] * uy;
     const double feq =  w_d[i] * rho * (1.0 + 3.0 * cu + 4.5 * cu * cu - 1.5 * u2);
-    f[i * N + k] += -(1.0 / tau) * (f[i * N + k] - feq);
+    f[fidx(i, x, y, nx, ny)] += -(1.0 / tau) * (f[fidx(i, x, y, nx, ny)] - feq);
   }
 }
 
@@ -129,14 +130,12 @@ void bounce_back_kernel(double* f,   const std::uint8_t* solid,  std::size_t nx,
   const std::size_t k = idx(x, y, nx);
   if (!solid[k]) return;
 
-  const std::size_t N = nx * ny;
-
   for (int i = 1; i < 9; ++i) {
     const int j = opp_d[i];
     if (i < j) {
-      const double tmp = f[i * N + k];
-      f[i * N + k] = f[j * N + k];
-      f[j * N + k] = tmp;
+      const double tmp = f[fidx(i, x, y, nx, ny)];
+      f[fidx(i, x, y, nx, ny)]= f[fidx(j, x, y, nx, ny)];
+      f[fidx(j, x, y, nx, ny)] = tmp;
     }
   }
 }
@@ -147,17 +146,15 @@ void stream_kernel(const double* f,  double* ftmp, std::size_t nx, std::size_t n
   const std::size_t x = blockIdx.x * blockDim.x + threadIdx.x;
   const std::size_t y = blockIdx.y * blockDim.y + threadIdx.y;
   if (x >= nx || y >= ny) return;
-  const std::size_t N = nx * ny;
-  const std::size_t k = idx(x, y, nx);
 
   for (int i = 0; i < 9; ++i) {
     const long sx = long(x) - cx_d[i];
     const long sy = long(y) - cy_d[i];
 
     if (sx >= 0 && sx < long(nx) && sy >= 0 && sy < long(ny)) {
-      ftmp[i * N + k] = f[i * N + idx(std::size_t(sx), std::size_t(sy), nx)];
+      ftmp[fidx(i, x, y, nx, ny)] = f[fidx(i, std::size_t(sx), std::size_t(sy), nx, ny)];
     } else {
-      ftmp[i * N + k] = f[i * N + k];
+      ftmp[fidx(i, x, y, nx, ny)]  = f[fidx(i, x, y, nx, ny)];
     }
   }
 }
@@ -169,7 +166,6 @@ void apply_inlet_kernel(double* f,  const std::uint8_t* solid, std::size_t nx,  
   if (y >= ny) return;
   const std::size_t x = 0;
   const std::size_t k = idx(x, y, nx);
-  const std::size_t N = nx * ny;
 
   if (solid[k]) return;
 
@@ -180,7 +176,7 @@ void apply_inlet_kernel(double* f,  const std::uint8_t* solid, std::size_t nx,  
 
   for (int i = 0; i < 9; ++i) {
     const double cu = cx_d[i] * ux + cy_d[i] * uy;
-    f[i*N +k] =  w_d[i] * rho * (1.0 + 3.0* cu + 4.5 * cu * cu - 1.5 * u2);
+    f[fidx(i, x, y, nx, ny)] =  w_d[i] * rho * (1.0 + 3.0* cu + 4.5 * cu * cu - 1.5 * u2);
   }
 }
 
@@ -206,14 +202,13 @@ void macro_updates_kernel(const double* f, double* rho,  double* ux,  double* uy
   const std::size_t y = blockIdx.y * blockDim.y + threadIdx.y;
   if (x >= nx || y >= ny) return;
   const std::size_t k = idx(x, y, nx);
-  const std::size_t N = nx * ny;
 
   double r  = 0.0;
   double mx = 0.0;
   double my = 0.0;
 
   for (int i = 0; i < 9; ++i) {
-    const double fi = f[i * N + k];
+    const double fi = f[fidx(i, x, y, nx, ny)];
     r  += fi;
     mx += cx_d[i] * fi;
     my += cy_d[i] * fi;
@@ -275,6 +270,8 @@ LBM_CUDA::LBM_CUDA(std::size_t nx, std::size_t ny,
 
   mark_obstacle(cyl_x, cyl_y, cyl_r);
 }
+
+
 
 LBM_CUDA::~LBM_CUDA()
 {
@@ -362,12 +359,10 @@ LBM_CUDA::copy_probe_to_host(std::size_t x,std::size_t y, double& ux, double& uy
     uy = 0.0;
     return;
   }
-  const std::size_t N = nx_ * ny_;
-  const std::size_t k = y * nx_ + x;
-
   double f_host[9];
   for (int i = 0; i < 9; ++i) {
-    cudaMemcpy(&f_host[i], f_d_ + i * N + k, sizeof(double),cudaMemcpyDeviceToHost);
+    const std::size_t fi_idx = fidx(i, x, y, nx_, ny_);
+    cudaMemcpy(&f_host[i], f_d_ + fi_idx,  sizeof(double), cudaMemcpyDeviceToHost);
   }
 
   const int cx[9] = { 0,  1,  0, -1,  0,  1, -1, -1,  1};

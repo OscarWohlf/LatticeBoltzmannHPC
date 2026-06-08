@@ -145,6 +145,7 @@ LBM_MPI::bounce_back()
       std::swap(f_[5 * N + k], f_[7 * N + k]);
       std::swap(f_[6 * N + k], f_[8 * N + k]);
      }
+
   }
 }
 

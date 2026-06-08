@@ -33,6 +33,8 @@ public:
    * @param cyl_y    Center of the (first) cylinder along y, in cell units.
    * @param cyl_r    Radius of the (first) cylinder, in cell units.
    */
+
+
   LBM_CUDA(std::size_t nx, std::size_t ny,
       double u_in, double Re,
       double cyl_x, double cyl_y, double cyl_r,
